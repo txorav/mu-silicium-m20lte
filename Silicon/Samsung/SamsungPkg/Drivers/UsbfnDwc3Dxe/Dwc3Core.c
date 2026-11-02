@@ -26,9 +26,7 @@ Dwc3AllocateDmaBuffer (
 
   Status = gDS->SetMemorySpaceAttributes ((EFI_PHYSICAL_ADDRESS)(UINTN)Buffer, EFI_PAGES_TO_SIZE (Pages), EFI_MEMORY_UC);
   if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_ERROR, "DWC3: Failed to set memory attribs! Status = %r\n", Status));
-    FreeAlignedPages (Buffer, Pages);
-    return NULL;
+    DEBUG ((EFI_D_WARN, "DWC3: Failed to set memory attribs! Status = %r (ignored)\n", Status));
   }
 
   if (PhysicalAddress != NULL) {
@@ -113,11 +111,8 @@ Dwc3PhyInterfaceSetup (IN DWC3_DEV *Dev)
   UINT32 Register;
 
   Register = MmioRead32 (Dev->Base + DWC3_GUSB3PIPECTL (0));
-
-  if (Dev->Platform.SuperSpeedPhyDisabled) {
-    Register |= DWC3_GUSB3PIPECTL_SUSPHY;
-  } else {
-    Register &= ~DWC3_GUSB3PIPECTL_SUSPHY;
+  Register &= ~DWC3_GUSB3PIPECTL_SUSPHY;
+  if (!Dev->Platform.SuperSpeedPhyDisabled) {
     Register |= DWC3_GUSB3PIPECTL_DEP1P2P3_EN;
   }
 
@@ -257,7 +252,7 @@ Dwc3CoreInit (IN DWC3_DEV *Dev)
   Register &= ~DWC3_GCTL_SCALEDOWN_MASK;
   Register &= ~DWC3_GCTL_DISSCRAMBLE;
   Register &= ~DWC3_GCTL_GBLHIBERNATIONEN;
-  Register &= ~DWC3_GCTL_DSBLCLKGTNG;
+  Register |= DWC3_GCTL_DSBLCLKGTNG;
   MmioWrite32 (Dev->Base + DWC3_GCTL, Register);
 
   Dwc3FrameLengthAdjust (Dev);

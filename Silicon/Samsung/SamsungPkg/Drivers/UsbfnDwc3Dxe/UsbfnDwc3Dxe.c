@@ -551,8 +551,6 @@ Dwc3Transfer (
       return EFI_INVALID_PARAMETER;
     }
 
-    Dwc3EndTransfer (Dev, PhysEpNum);
-
     if (TrbLength > Dev->SetupPacket.Length) {
       TrbLength   = Dev->SetupPacket.Length;
       *BufferSize = TrbLength;
@@ -575,6 +573,13 @@ Dwc3Transfer (
       if (TrbLength > DWC3_EP0_BOUNCE_SIZE) {
         TrbLength = DWC3_EP0_BOUNCE_SIZE;
       }
+    } else {
+      if (TrbLength > DWC3_EP0_BOUNCE_SIZE) {
+        return EFI_INVALID_PARAMETER;
+      }
+
+      CopyMem (Dev->Ep0Buffer, Buffer, TrbLength);
+      DmaBuffer = Dev->Ep0Buffer;
     }
   } else {
     TrbType = DWC3_TRBCTL_NORMAL;
@@ -584,11 +589,11 @@ Dwc3Transfer (
     }
   }
 
-  if (TrbLength != 0 && DmaBuffer == Buffer) {
+  if (TrbLength != 0) {
     if (Direction == EfiUsbEndpointDirectionDeviceTx) {
-      WriteBackDataCacheRange (Buffer, TrbLength);
+      WriteBackDataCacheRange (DmaBuffer, TrbLength);
     } else {
-      WriteBackInvalidateDataCacheRange (Buffer, TrbLength);
+      WriteBackInvalidateDataCacheRange (DmaBuffer, TrbLength);
     }
   }
 
@@ -596,7 +601,7 @@ Dwc3Transfer (
   Endpoint->TransferTrbLength = TrbLength;
 
   Status = Dwc3StartTransfer (Dev, PhysEpNum,
-                              (UINT64)(UINTN)DmaBuffer,
+                              (PhysEpNum <= DWC3_EP0_IN) ? Dev->Ep0BufferPhys : (UINT64)(UINTN)DmaBuffer,
                               TrbLength, TrbType);
   if (EFI_ERROR (Status)) {
     Endpoint->TransferBuffer = NULL;
@@ -884,10 +889,6 @@ Dwc3FreeResources (IN DWC3_DEV *Dev)
   }
 
   for (Index = 0; Index < DWC3_MAX_PHYSICAL_EP; Index++) {
-    if (Index == DWC3_EP0_IN) {
-      continue;
-    }
-
     if (Dev->Endpoints[Index].TrbPool != NULL) {
       Dwc3FreeDmaBuffer (Dev->Endpoints[Index].TrbPool, sizeof (DWC3_TRB) * DWC3_TRB_PER_EP);
     }
@@ -945,12 +946,6 @@ InitUsbfnDwc3Driver (
 
   for (Index = 0; Index < DWC3_MAX_PHYSICAL_EP; Index++) {
     Dev->Endpoints[Index].PhysEpNum = Index;
-
-    if (Index == DWC3_EP0_IN) {
-      Dev->Endpoints[Index].TrbPool     = Dev->Endpoints[DWC3_EP0_OUT].TrbPool;
-      Dev->Endpoints[Index].TrbPoolPhys = Dev->Endpoints[DWC3_EP0_OUT].TrbPoolPhys;
-      continue;
-    }
 
     Dev->Endpoints[Index].TrbPool = Dwc3AllocateDmaBuffer (sizeof (DWC3_TRB) * DWC3_TRB_PER_EP,
                                                            &Dev->Endpoints[Index].TrbPoolPhys);

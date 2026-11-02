@@ -22,6 +22,7 @@
 #include <Configuration/BootDevices.h>
 
 #include "BootManager.h"
+#include "XnuLoader.h"
 
 //
 // Global Variables
@@ -49,7 +50,6 @@ PlatformBootManagerBeforeConsole ()
 
   // Register Console Variables
   EfiBootManagerUpdateConsoleVariable (ConIn,  (EFI_DEVICE_PATH_PROTOCOL *)&KeypadDevicePath,  NULL);
-  EfiBootManagerUpdateConsoleVariable (ConIn,  (EFI_DEVICE_PATH_PROTOCOL *)&UsbKeyboardDevicePath, NULL);
   EfiBootManagerUpdateConsoleVariable (ConOut, (EFI_DEVICE_PATH_PROTOCOL *)&DisplayDevicePath, NULL);
   EfiBootManagerUpdateConsoleVariable (ErrOut, (EFI_DEVICE_PATH_PROTOCOL *)&DisplayDevicePath, NULL);
 
@@ -148,27 +148,22 @@ PlatformBootManagerPriorityBoot (IN OUT UINT16 **BootNext)
 {
   EFI_STATUS                   Status;
   EFI_BOOT_MANAGER_LOAD_OPTION LoadOption;
-  BOOLEAN                      BootManagerFlag;
 
   // Unregister Key Callback
   UnregisterKeyCallback ();
 
-  // Get Boot Manager Flag
-  BootManagerFlag = EnterBootManager ();
-  if (BootManagerFlag == FALSE) {
-    return;
+  if (EnterBootManager ()) {
+    // If Vol Up was held at power-on, open UEFI Setup menu
+    Status = MsBootOptionsLibGetBootManagerMenu (&LoadOption, NULL);
+    if (!EFI_ERROR (Status)) {
+      EfiBootManagerBoot           (&LoadOption);
+      EfiBootManagerFreeLoadOption (&LoadOption);
+      // If user exits UEFI menu, fall through to HackiOS loader rather than failing
+    }
   }
 
-  // Get Boot Manager Load Option
-  Status = MsBootOptionsLibGetBootManagerMenu (&LoadOption, NULL);
-  if (EFI_ERROR (Status)) {
-    DEBUG ((EFI_D_ERROR, "%a: Failed to get Boot Manager Load Option! Status = %r", __FUNCTION__, Status));
-    return;
-  }
-
-  // Execute Boot Manager Load Option
-  EfiBootManagerBoot           (&LoadOption);
-  EfiBootManagerFreeLoadOption (&LoadOption);
+  // Default: hand over to HackiOS / XNU loader
+  XnuLoaderMain ();
 }
 
 VOID
@@ -202,10 +197,21 @@ VOID
 EFIAPI
 PlatformBootManagerUnableToBoot ()
 {
-  EFI_STATUS Status;
+  EFI_STATUS                   Status;
+  EFI_BOOT_MANAGER_LOAD_OPTION LoadOption;
 
   // Execute Secondary Unable To Boot
   DeviceBootManagerUnableToBoot ();
+
+  // Fallback to Boot Manager Menu instead of failing
+  Status = MsBootOptionsLibGetBootManagerMenu (&LoadOption, NULL);
+  if (!EFI_ERROR (Status)) {
+    EfiBootManagerBoot (&LoadOption);
+    EfiBootManagerFreeLoadOption (&LoadOption);
+  }
+
+  // Always boot HackiOS / XNU loader if no other OS was booted
+  XnuLoaderMain ();
 
   // Display No Boot OS Logo
   Status = DisplayBootGraphic (BG_NO_BOOT_OS);

@@ -315,6 +315,8 @@ Dwc3StartTransfer (
       }
     }
 
+    WriteBackDataCacheRange (Endpoint->TrbPool, sizeof (DWC3_TRB) * 2);
+
     Status = Dwc3SendEpCommand (Dev, PhysEpNum, DWC3_DEPCMD_STARTTRANSFER,
                                 (UINT32)(Endpoint->TrbPoolPhys >> 32),
                                 (UINT32)(Endpoint->TrbPoolPhys & 0xFFFFFFFF),
@@ -345,8 +347,9 @@ Dwc3EndTransfer (
   DWC3_ENDPOINT *Endpoint = &Dev->Endpoints[PhysEpNum];
   UINT32         Command;
 
-  if (Endpoint->ResourceIndex == 0) {
+  if (!Endpoint->TransferStarted || Endpoint->ResourceIndex == 0) {
     Endpoint->TransferStarted = FALSE;
+    Endpoint->ResourceIndex   = 0;
     return;
   }
 
@@ -392,8 +395,6 @@ Dwc3Ep0OutStart (IN DWC3_DEV *Dev)
   Dev->Ep0StatusStarted = FALSE;
   Dev->Ep0Bounced       = FALSE;
 
-  Dwc3EndTransfer (Dev, DWC3_EP0_IN);
-  Dwc3EndTransfer (Dev, DWC3_EP0_OUT);
   Dwc3StartTransfer (Dev, DWC3_EP0_OUT, Dev->Ep0BufferPhys, 8, DWC3_TRBCTL_CONTROL_SETUP);
 }
 
@@ -404,7 +405,16 @@ Dwc3Ep0ResetState (IN DWC3_DEV *Dev)
   Dev->Ep0StatusStarted = FALSE;
   Dev->Ep0Bounced       = FALSE;
 
-  Dwc3EndTransfer (Dev, DWC3_EP0_IN);
+  if (Dev->Endpoints[DWC3_EP0_IN].TransferStarted) {
+    Dwc3EndTransfer (Dev, DWC3_EP0_IN);
+  }
+  if (Dev->Endpoints[DWC3_EP0_OUT].TransferStarted) {
+    Dwc3EndTransfer (Dev, DWC3_EP0_OUT);
+  }
+  Dev->Endpoints[DWC3_EP0_OUT].TransferStarted = FALSE;
+  Dev->Endpoints[DWC3_EP0_OUT].ResourceIndex   = 0;
+  Dev->Endpoints[DWC3_EP0_IN].TransferStarted  = FALSE;
+  Dev->Endpoints[DWC3_EP0_IN].ResourceIndex    = 0;
 }
 
 VOID
@@ -482,6 +492,7 @@ Dwc3Ep0HandleSetup (IN DWC3_DEV *Dev)
 {
   EFI_USBFN_MESSAGE_PAYLOAD Payload;
 
+  InvalidateDataCacheRange (Dev->Ep0Buffer, sizeof (EFI_USB_DEVICE_REQUEST));
   CopyMem (&Dev->SetupPacket, Dev->Ep0Buffer, sizeof (EFI_USB_DEVICE_REQUEST));
 
   Dev->ThreeStageSetup = (BOOLEAN)(Dev->SetupPacket.Length != 0);
@@ -519,7 +530,6 @@ Dwc3Ep0StartStatus (
   Dev->Ep0State         = Dwc3Ep0StateStatus;
   Dev->Ep0StatusStarted = TRUE;
 
-  Dwc3EndTransfer (Dev, PhysEpNum);
   Dwc3StartTransfer (Dev, PhysEpNum, Dev->Ep0BufferPhys, 0, TrbType);
 }
 
@@ -550,6 +560,7 @@ Dwc3HandleEp0Event (
   switch (EventType) {
     case DWC3_DEPEVT_XFERCOMPLETE:
       Endpoint->TransferStarted = FALSE;
+      Endpoint->ResourceIndex   = 0;
 
       switch (Dev->Ep0State) {
         case Dwc3Ep0StateSetup:
@@ -557,6 +568,7 @@ Dwc3HandleEp0Event (
           break;
 
         case Dwc3Ep0StateData:
+          InvalidateDataCacheRange (Endpoint->TrbPool, sizeof (DWC3_TRB) * 2);
           Transferred = Dwc3TrbBytesTransferred (Endpoint);
 
           if (Dev->Ep0Bounced) {
@@ -565,6 +577,7 @@ Dwc3HandleEp0Event (
             }
 
             if (Dev->Ep0BounceTarget != NULL && Transferred != 0) {
+              InvalidateDataCacheRange (Dev->Ep0Buffer, Transferred);
               CopyMem (Dev->Ep0BounceTarget, Dev->Ep0Buffer, Transferred);
             }
 
@@ -641,6 +654,8 @@ Dwc3HandleEpEvent (
         break;
       }
 
+      InvalidateDataCacheRange (Endpoint->TrbPool, sizeof (DWC3_TRB) * 2);
+
       if ((Endpoint->TrbPool[0].Control & DWC3_TRB_CTRL_HWO) != 0) {
         break;
       }
@@ -682,7 +697,6 @@ Dwc3HandleDeviceEvent (
   UINT16                    BulkMaxPacket;
   UINT8                     Index;
   BOOLEAN                   Suspended;
-  BOOLEAN                   Ep0Rearm;
 
   ZeroMem (&Payload, sizeof (Payload));
 
@@ -708,10 +722,12 @@ Dwc3HandleDeviceEvent (
       Register &= ~DWC3_DCFG_DEVADDR_MASK;
       MmioWrite32 (Dev->Base + DWC3_DCFG, Register);
 
-      for (Index = DWC3_EP0_IN + 1; Index < Dev->NumPhysicalEps; Index++) {
-        if (Dev->Endpoints[Index].Enabled) {
+      for (Index = 0; Index < Dev->NumPhysicalEps; Index++) {
+        if (Dev->Endpoints[Index].TransferStarted) {
           Dwc3EndTransfer (Dev, Index);
-          Dev->Endpoints[Index].TransferBuffer = NULL;
+          Dev->Endpoints[Index].TransferBuffer  = NULL;
+          Dev->Endpoints[Index].TransferStarted = FALSE;
+          Dev->Endpoints[Index].ResourceIndex   = 0;
         }
       }
 
@@ -746,10 +762,8 @@ Dwc3HandleDeviceEvent (
           break;
       }
 
-      Ep0Rearm = (BOOLEAN)(!Dev->Endpoints[DWC3_EP0_OUT].TransferStarted);
-
-      Dwc3EnableEndpoint (Dev, DWC3_EP0_OUT, DWC3_DEPCMD_TYPE_CONTROL, Ep0MaxPacket, (BOOLEAN)!Ep0Rearm);
-      Dwc3EnableEndpoint (Dev, DWC3_EP0_IN, DWC3_DEPCMD_TYPE_CONTROL, Ep0MaxPacket, (BOOLEAN)!Ep0Rearm);
+      Dwc3EnableEndpoint (Dev, DWC3_EP0_OUT, DWC3_DEPCMD_TYPE_CONTROL, Ep0MaxPacket, TRUE);
+      Dwc3EnableEndpoint (Dev, DWC3_EP0_IN, DWC3_DEPCMD_TYPE_CONTROL, Ep0MaxPacket, TRUE);
 
       BulkMaxPacket = (UINT16)((Dev->Speed >= UsbBusSpeedHigh) ? 512 : 64);
 
@@ -758,12 +772,10 @@ Dwc3HandleDeviceEvent (
           continue;
         }
 
-        Dwc3EnableEndpoint (Dev, Index, Dev->Endpoints[Index].EpType, BulkMaxPacket, FALSE);
+        Dwc3EnableEndpoint (Dev, Index, Dev->Endpoints[Index].EpType, BulkMaxPacket, TRUE);
       }
 
-      if (Ep0Rearm) {
-        Dwc3Ep0OutStart (Dev);
-      }
+      Dwc3Ep0OutStart (Dev);
 
       Payload.ubs = Dev->Speed;
       Dwc3PushMessage (Dev, EfiUsbMsgBusEventSpeed, &Payload);
@@ -815,6 +827,8 @@ Dwc3ProcessEvents (IN DWC3_DEV *Dev)
   if (Count == 0) {
     return EFI_NOT_READY;
   }
+
+  InvalidateDataCacheRange (Dev->EventBuffer, DWC3_EVENT_BUFFER_SIZE);
 
   while (Count >= sizeof (UINT32)) {
     CopyMem (&Event, Dev->EventBuffer + Dev->EventPos, sizeof (UINT32));
