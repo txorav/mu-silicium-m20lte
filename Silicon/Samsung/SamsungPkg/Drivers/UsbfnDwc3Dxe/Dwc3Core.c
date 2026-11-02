@@ -162,7 +162,7 @@ Dwc3EventBufferSetup (IN DWC3_DEV *Dev)
 
   MmioWrite32 (Dev->Base + DWC3_GEVNTADRLO (0), (UINT32)(Dev->EventBufferPhys & 0xFFFFFFFF));
   MmioWrite32 (Dev->Base + DWC3_GEVNTADRHI (0), (UINT32)(Dev->EventBufferPhys >> 32));
-  MmioWrite32 (Dev->Base + DWC3_GEVNTSIZ (0), DWC3_GEVNTSIZ_INTMASK | DWC3_GEVNTSIZ_SIZE (DWC3_EVENT_BUFFER_SIZE));
+  MmioWrite32 (Dev->Base + DWC3_GEVNTSIZ (0), DWC3_GEVNTSIZ_SIZE (DWC3_EVENT_BUFFER_SIZE));
   MmioWrite32 (Dev->Base + DWC3_GEVNTCOUNT (0), MmioRead32 (Dev->Base + DWC3_GEVNTCOUNT (0)) & DWC3_GEVNTCOUNT_MASK);
 }
 
