@@ -13,6 +13,22 @@ This Project focuses on Making ARM-Based Devices Boot Operating Systems like Win
 - [Guides](https://github.com/Project-Silicium/Guides/blob/main/README.md)
 - [Discord Server](https://discord.gg/Dx2QgMx7Sv)
 
+## Featured Device: Samsung Galaxy M20 (`m20lte`)
+
+The Samsung Galaxy M20 (SM-M205F/FN/G, Exynos 7904 / S5E7904) is fully supported with standalone UEFI firmware:
+- **Build Target:** `m20lte` (`Platforms/Samsung/m20ltePkg`)
+- **Display:** 1080x2340 Framebuffer at `0xEC000000`
+- **USB:** Synopsys DWC3 Peripheral/Device Mode (`UsbfnDwc3Dxe`)
+- **Firmware Base:** `0x8F000000` (Size: 2 MiB)
+- **Auto-Boot:** Boots directly into EDK2 Boot Manager or auto-chains XnuLoader at `0x8F100000`
+
+### Quick Build for `m20lte`:
+```bash
+./setup_env.sh
+python3 build_uefi.py -d m20lte
+```
+Output artifact is generated at `Build/m20lte/DEBUG_GCC5/FV/SILICIUM_UEFI.fd` and packaged into `Mu-m20lte.img`.
+
 ## Frequently asked Questions
 
 ### **Is my Device Supported in this Project?**

@@ -457,7 +457,27 @@
 | USB Power Delivery |             | ❌    |
 | SD Card            |             | ❌    |
 | Windows Boot       |             | ❌    |
+## Samsung Galaxy M20
+
+**State:** Active <br>
+**Codename:** m20lte
+
+**Contributors:** [txorav](https://github.com/txorav/)
+
+### UEFI Status
+
+| Feature            | Description | State |
+|:-------------------|:------------|:-----:|
+| Display            | 1080x2340   | ✅    |
+| Internal Storage   |             | ❌    |
+| Side Buttons       | Volume/Pwr  | ✅    |
+| USB Host Mode      |             | ❌    |
+| USB Device Mode    | DWC3 Gadget | ✅    |
+| USB Power Delivery |             | ❌    |
+| SD Card            |             | ❌    |
+| Windows Boot       |             | ❌    |
 | Linux Boot         |             | ❌    |
+| XnuLoader / iOS    | Auto-chain  | ✅    |
 
 </details>
 
