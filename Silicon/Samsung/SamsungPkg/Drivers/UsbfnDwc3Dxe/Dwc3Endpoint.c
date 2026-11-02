@@ -318,8 +318,8 @@ Dwc3StartTransfer (
     WriteBackDataCacheRange (Endpoint->TrbPool, sizeof (DWC3_TRB) * 2);
 
     Status = Dwc3SendEpCommand (Dev, PhysEpNum, DWC3_DEPCMD_STARTTRANSFER,
-                                (UINT32)(Endpoint->TrbPoolPhys >> 32),
                                 (UINT32)(Endpoint->TrbPoolPhys & 0xFFFFFFFF),
+                                (UINT32)(Endpoint->TrbPoolPhys >> 32),
                                 0, &CommandRegister);
     if (!EFI_ERROR (Status)) {
       break;
@@ -404,6 +404,7 @@ Dwc3Ep0ResetState (IN DWC3_DEV *Dev)
   Dev->Ep0State         = Dwc3Ep0StateSetup;
   Dev->Ep0StatusStarted = FALSE;
   Dev->Ep0Bounced       = FALSE;
+  Dev->AddressPending   = FALSE;
 
   if (Dev->Endpoints[DWC3_EP0_IN].TransferStarted) {
     Dwc3EndTransfer (Dev, DWC3_EP0_IN);
@@ -457,7 +458,6 @@ BOOLEAN
 Dwc3Ep0HandleStandardRequest (IN DWC3_DEV *Dev)
 {
   EFI_USB_DEVICE_REQUEST *Request = &Dev->SetupPacket;
-  UINT32                  Register;
   UINT8                   Address;
 
   if ((Request->RequestType & (0x03 << 5)) != USB_REQ_TYPE_STANDARD) {
@@ -468,10 +468,8 @@ Dwc3Ep0HandleStandardRequest (IN DWC3_DEV *Dev)
     case USB_REQ_SET_ADDRESS:
       Address = (UINT8)(Request->Value & 0x7F);
 
-      Register  = MmioRead32 (Dev->Base + DWC3_DCFG);
-      Register &= ~DWC3_DCFG_DEVADDR_MASK;
-      Register |= DWC3_DCFG_DEVADDR (Address);
-      MmioWrite32 (Dev->Base + DWC3_DCFG, Register);
+      Dev->PendingAddress = Address;
+      Dev->AddressPending = TRUE;
 
       return TRUE;
 
@@ -556,6 +554,7 @@ Dwc3HandleEp0Event (
 {
   DWC3_ENDPOINT *Endpoint = &Dev->Endpoints[PhysEpNum];
   UINTN          Transferred;
+  UINT32         Register;
 
   switch (EventType) {
     case DWC3_DEPEVT_XFERCOMPLETE:
@@ -589,6 +588,14 @@ Dwc3HandleEp0Event (
           break;
 
         case Dwc3Ep0StateStatus:
+          if (Dev->AddressPending) {
+            Register  = MmioRead32 (Dev->Base + DWC3_DCFG);
+            Register &= ~DWC3_DCFG_DEVADDR_MASK;
+            Register |= DWC3_DCFG_DEVADDR (Dev->PendingAddress);
+            MmioWrite32 (Dev->Base + DWC3_DCFG, Register);
+            Dev->AddressPending = FALSE;
+          }
+
           Dwc3Ep0OutStart (Dev);
           break;
 

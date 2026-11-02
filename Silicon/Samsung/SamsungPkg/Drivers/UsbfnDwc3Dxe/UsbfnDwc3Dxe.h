@@ -114,6 +114,8 @@ typedef struct {
   BOOLEAN                      Ep0Bounced;
   VOID                        *Ep0BounceTarget;
   UINTN                        Ep0BounceLength;
+  BOOLEAN                      AddressPending;
+  UINT8                        PendingAddress;
 
   DWC3_ENDPOINT                Endpoints[DWC3_MAX_PHYSICAL_EP];
   DWC3_TRANSFER_BUFFER         TransferBuffers[DWC3_MAX_TRANSFER_BUFFERS];
