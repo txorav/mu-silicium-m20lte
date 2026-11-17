@@ -323,6 +323,11 @@ MshcIdentifyCard (VOID)
 
   gBS->Stall (2000);
 
+  // 8-bit bus width is strictly internal eMMC
+  if (gMshcHost.BusWidth == 8) {
+    return MshcMmcIdentify ();
+  }
+
   Status = MshcSendCmd (CMD8, CMD8_ARG, &Response[0]);
   if (!EFI_ERROR (Status)) {
     if ((Response[0] & CMD8_RESPONSE_MASK) != CMD8_ARG) {

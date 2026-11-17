@@ -20,7 +20,7 @@ _Start:
   mov   x4, x1
   ldr   x5, =FD_BASE
   cmp   x4, x5
-  beq   _Entry
+  beq   _Flush
   ldr   x6,  =FD_SIZE
 
 _CopyLoop:
@@ -28,6 +28,23 @@ _CopyLoop:
   stp   x2, x3, [x5], #16
   subs  x6, x6, #16
   b.ne  _CopyLoop
+
+_Flush:
+  /* Cache Maintenance: Clean D-cache to PoC & Invalidate for copied range */
+  ldr   x10, =FD_BASE
+  ldr   x12, =FD_SIZE
+.Lflush_loop:
+  dc    civac, x10
+  add   x10, x10, #64
+  subs  x12, x12, #64
+  b.gt  .Lflush_loop
+
+  dsb   sy
+  isb
+  ic    iallu
+  dsb   sy
+  isb
+
   ldr   x5, =FD_BASE
 
 _Entry:

@@ -99,27 +99,23 @@ MshcMmcIdentify (VOID)
   UINT32     Response[4];
   UINTN      Elapsed;
 
-  for (Elapsed = 0; ; Elapsed++) {
+  for (Elapsed = 0; Elapsed < MMC_OP_COND_TIMEOUT_MS; Elapsed++) {
     Status = MshcSendCmd (MMC_CMD1, MMC_OCR_SECTOR_MODE | MMC_OCR_VOLTAGE_WINDOW, &Response[0]);
     if (EFI_ERROR (Status)) {
-      if (Elapsed == 0) {
-        DEBUG ((EFI_D_ERROR, "%a: CMD1 Failed, no eMMC.\n", __FUNCTION__));
-        return EFI_UNSUPPORTED;
-      }
-
-      DEBUG ((EFI_D_ERROR, "%a: CMD1 Failed! Status = %r\n", __FUNCTION__, Status));
-      return Status;
+      MicroSecondDelay (1000);
+      continue;
     }
 
     if (Response[0] & OCR_BUSY) {
       break;
     }
 
-    if (Elapsed >= MMC_OP_COND_TIMEOUT_MS) {
-      return EFI_TIMEOUT;
-    }
-
     MicroSecondDelay (1000);
+  }
+
+  if (Elapsed >= MMC_OP_COND_TIMEOUT_MS) {
+    DEBUG ((EFI_D_ERROR, "%a: CMD1 timed out waiting for eMMC ready!\n", __FUNCTION__));
+    return EFI_TIMEOUT;
   }
 
   gCardInfo.CardType     = MMC_CARD;

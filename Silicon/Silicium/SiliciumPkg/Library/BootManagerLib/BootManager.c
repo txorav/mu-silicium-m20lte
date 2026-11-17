@@ -162,6 +162,19 @@ PlatformBootManagerPriorityBoot (IN OUT UINT16 **BootNext)
     }
   }
 
+  // Connect block devices so PartitionDxe enumerates GPT partitions
+  {
+    UINTN       HandleCount  = 0;
+    EFI_HANDLE *HandleBuffer = NULL;
+    Status = gBS->LocateHandleBuffer (ByProtocol, &gEfiBlockIoProtocolGuid, NULL, &HandleCount, &HandleBuffer);
+    if (!EFI_ERROR (Status) && HandleBuffer != NULL) {
+      for (UINTN Index = 0; Index < HandleCount; Index++) {
+        gBS->ConnectController (HandleBuffer[Index], NULL, NULL, FALSE);
+      }
+      FreePool (HandleBuffer);
+    }
+  }
+
   // Default: hand over to HackiOS / XNU loader
   XnuLoaderMain ();
 }
